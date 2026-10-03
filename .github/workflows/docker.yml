@@ -1,0 +1,57 @@
+name: Build e Push Docker
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: minha-aplicacao
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Ler versão
+        id: version
+        run: echo "value=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Definir nome da imagem (minúsculo)
+        id: image
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.image.outputs.name }}:${{ steps.version.outputs.value }}
+
+      - name: Verificar imagem criada
+        run: |
+          docker image inspect ${{ steps.image.outputs.name }}:${{ steps.version.outputs.value }}
+          docker run -d --name teste -p 8080:8080 ${{ steps.image.outputs.name }}:${{ steps.version.outputs.value }}
+          sleep 5
+          curl -f http://localhost:8080/hello
+          docker rm -f teste
+
+      - name: Push para o GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ steps.version.outputs.value }}
